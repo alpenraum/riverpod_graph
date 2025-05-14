@@ -1,7 +1,7 @@
 # 📊 Riverpod Graph
 
 A static analysis tool that visualizes dependencies between your Riverpod providers using UML-style graphs powered by [Mermaid](https://mermaid.js.org). Great for understanding complex state relationships in your Flutter app.
-
+(this tool was written in a rage filled 30 minute session after trying to debug a complex riverpod app for hours. It's probably not perfect.)
 [![pub package](https://img.shields.io/pub/v/riverpod_graph.svg)](https://pub.dartlang.org/packages/riverpod_graph)
 ---
 
