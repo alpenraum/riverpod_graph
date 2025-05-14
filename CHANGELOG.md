@@ -1,3 +1,8 @@
+## 1.0.2
+
+- bugfixes for edge cases
+
+
 ## 1.0.1
 
 - moved debug logs to --verbose flag

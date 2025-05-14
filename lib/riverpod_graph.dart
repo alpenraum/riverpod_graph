@@ -5,6 +5,7 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/source/line_info.dart';
 import 'package:riverpod_graph/provider_edge.dart';
+import 'package:riverpod_graph/util/html_template.dart';
 
 class RiverpodGraphAnalyzer {
   final bool  _printLogs;
@@ -21,9 +22,13 @@ class RiverpodGraphAnalyzer {
         .where((file) => file.path.endsWith('.dart'));
 
     for (final file in dartFiles) {
-      if(_printLogs) print('Analyzing file: ${file.path}');
+      if(_printLogs) {
+        print('Analyzing file: ${file.path}');
+      }
       final content = await file.readAsString();
-      if(_printLogs) print('Content of ${file.path}: \n$content'); // Log content for debug
+      if(_printLogs) {
+        print('Content of ${file.path}: \n$content'); // Log content for debug
+      }
 
       final result = parseString(content: content, path: file.path);
       final unit = result.unit;
@@ -31,7 +36,9 @@ class RiverpodGraphAnalyzer {
       final visitor = _Visitor(file.path, _providers, edges, lineInfo, _printLogs);
       unit.visitChildren(visitor);
 
-      if(_printLogs) print('Finished analyzing file: ${file.path}');
+      if(_printLogs) {
+        print('Finished analyzing file: ${file.path}');
+      }
     }
   }
 
@@ -56,7 +63,7 @@ class RiverpodGraphAnalyzer {
   }
 
   String generateHtml(String mermaidGraph) {
-    final template = File('templates/graph_template.html').readAsStringSync();
+    final template = getHtmlTemplate();
     return template.replaceAll('<!--MERMAID_GRAPH-->', mermaidGraph);
   }
 
@@ -82,7 +89,9 @@ class _Visitor extends RecursiveAstVisitor<void> {
 
     // Log when we encounter a potential provider or reference
     if (node.name.endsWith('Provider')) {
-      if(_printLogs) print('Found potential provider: ${node.name} in $file');
+      if(_printLogs) {
+        print('Found potential provider: ${node.name} in $file');
+      }
     }
   }
 
@@ -107,47 +116,54 @@ class _Visitor extends RecursiveAstVisitor<void> {
     if (!['watch', 'read', 'listen'].contains(method)) return;
 
     // The provider being watched is the first argument
-    final providerArgument = node.argumentList.arguments.first;
+    if (node.argumentList.arguments.isNotEmpty) {
+      final providerArgument = node.argumentList.arguments.first;
 
-    String? targetProvider;
+      String? targetProvider;
 
-    if (providerArgument is SimpleIdentifier) {
-      // case: ref.watch(fooProvider)
-      targetProvider = providerArgument.name;
-    } else if (providerArgument is PrefixedIdentifier) {
-      // Case: ref.watch(counterProvider.notifier)
-      targetProvider = providerArgument.prefix.name;
-    } else if (providerArgument is PropertyAccess) {
-      // Case: ref.watch(object.property)
-      final target = providerArgument.target;
-      if (target is SimpleIdentifier) {
-        targetProvider = target.name;
+      if (providerArgument is SimpleIdentifier) {
+        // case: ref.watch(fooProvider)
+        targetProvider = providerArgument.name;
+      } else if (providerArgument is PrefixedIdentifier) {
+        // Case: ref.watch(counterProvider.notifier)
+        targetProvider = providerArgument.prefix.name;
+      } else if (providerArgument is PropertyAccess) {
+        // Case: ref.watch(object.property)
+        final target = providerArgument.target;
+        if (target is SimpleIdentifier) {
+          targetProvider = target.name;
+        }
       }
-    }
 
-    if (targetProvider != null) {
-      // Log to confirm we found the provider being watched
-      if(_printLogs) print('Found ref.watch on: ${targetProvider.toString()} in $file');
+      if (targetProvider != null) {
+        // Log to confirm we found the provider being watched
+        if (_printLogs) {
+          print(
+            'Found ref.watch on: ${targetProvider.toString()} in $file');
+        }
 
-      final type = switch (method) {
-        'read' => RefAccessType.read,
-        'listen' => RefAccessType.listen,
-        _ => RefAccessType.watch
-      };
+        final type = switch (method) {
+          'read' => RefAccessType.read,
+          'listen' => RefAccessType.listen,
+          _ => RefAccessType.watch
+        };
 
-      // Now we need to identify the provider that is invoking the 'ref.watch()'
-      // This will be the provider in the scope of the node
-      final currentProvider = _findCurrentProvider(node);
+        // Now we need to identify the provider that is invoking the 'ref.watch()'
+        // This will be the provider in the scope of the node
+        final currentProvider = _findCurrentProvider(node);
 
-      if (currentProvider != null) {
-        // Add an edge from the current provider to the watched provider
-        edges.add(ProviderEdge(
-          currentProvider, // This is the provider that contains ref.watch()
-          targetProvider, // The provider being watched
-          file,
-          _lineInfo.getLocation(node.offset).lineNumber,
-          type
-        ));
+        if (currentProvider != null) {
+          // Add an edge from the current provider to the watched provider
+          edges.add(ProviderEdge(
+              currentProvider, // This is the provider that contains ref.watch()
+              targetProvider, // The provider being watched
+              file,
+              _lineInfo
+                  .getLocation(node.offset)
+                  .lineNumber,
+              type
+          ));
+        }
       }
     }
   }
