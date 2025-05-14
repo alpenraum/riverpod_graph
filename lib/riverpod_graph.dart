@@ -75,7 +75,6 @@ class _Visitor extends RecursiveAstVisitor<void> {
   final Map<String, String> providers;
   final List<ProviderEdge> edges;
 
-  String? _currentProvider;
   final LineInfo _lineInfo;
 
   _Visitor(this.file, this.providers, this.edges, this._lineInfo);
@@ -97,12 +96,10 @@ class _Visitor extends RecursiveAstVisitor<void> {
     if (parent is VariableDeclarationList) {
       final type = parent.type?.toString() ?? '';
       if (_isRiverpodProvider(type)) {
-        _currentProvider = name;
         providers[name] = file;
       }
     }
     super.visitVariableDeclaration(node);
-    _currentProvider = null;
   }
 
   @override
