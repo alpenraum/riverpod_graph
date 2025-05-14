@@ -6,7 +6,7 @@ void main() {
   late RiverpodGraphAnalyzer analyzer;
 
   setUp(() {
-    analyzer = RiverpodGraphAnalyzer();
+    analyzer = RiverpodGraphAnalyzer(true);
   });
 
   test('detects simple provider dependency', () async {

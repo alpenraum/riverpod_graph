@@ -4,10 +4,12 @@ import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/source/line_info.dart';
-import 'package:path/path.dart' as p;
 import 'package:riverpod_graph/provider_edge.dart';
 
 class RiverpodGraphAnalyzer {
+  final bool  _printLogs;
+  
+  RiverpodGraphAnalyzer(this._printLogs);
   final _providers = <String, String>{}; // name -> file
 
   final edges = <ProviderEdge>[];
@@ -19,17 +21,17 @@ class RiverpodGraphAnalyzer {
         .where((file) => file.path.endsWith('.dart'));
 
     for (final file in dartFiles) {
-      print('Analyzing file: ${file.path}');
+      if(_printLogs) print('Analyzing file: ${file.path}');
       final content = await file.readAsString();
-      print('Content of ${file.path}: \n$content'); // Log content for debug
+      if(_printLogs) print('Content of ${file.path}: \n$content'); // Log content for debug
 
       final result = parseString(content: content, path: file.path);
       final unit = result.unit;
       final lineInfo = result.lineInfo;
-      final visitor = _Visitor(file.path, _providers, edges, lineInfo);
+      final visitor = _Visitor(file.path, _providers, edges, lineInfo, _printLogs);
       unit.visitChildren(visitor);
 
-      print('Finished analyzing file: ${file.path}');
+      if(_printLogs) print('Finished analyzing file: ${file.path}');
     }
   }
 
@@ -62,22 +64,17 @@ class RiverpodGraphAnalyzer {
     File(outputPath).writeAsStringSync(content);
   }
 
-  void printTraceability() {
-    for (final edge in edges) {
-      print('${edge.from} --> ${edge.to} '
-          '(${p.relative(edge.file)}:${edge.line})');
-    }
-  }
 }
 
 class _Visitor extends RecursiveAstVisitor<void> {
   final String file;
   final Map<String, String> providers;
   final List<ProviderEdge> edges;
+  final bool _printLogs;
 
   final LineInfo _lineInfo;
 
-  _Visitor(this.file, this.providers, this.edges, this._lineInfo);
+  _Visitor(this.file, this.providers, this.edges, this._lineInfo, this._printLogs);
 
   @override
   void visitSimpleIdentifier(SimpleIdentifier node) {
@@ -85,7 +82,7 @@ class _Visitor extends RecursiveAstVisitor<void> {
 
     // Log when we encounter a potential provider or reference
     if (node.name.endsWith('Provider')) {
-      print('Found potential provider: ${node.name} in $file');
+      if(_printLogs) print('Found potential provider: ${node.name} in $file');
     }
   }
 
@@ -130,7 +127,7 @@ class _Visitor extends RecursiveAstVisitor<void> {
 
     if (targetProvider != null) {
       // Log to confirm we found the provider being watched
-      print('Found ref.watch on: ${targetProvider.toString()} in $file');
+      if(_printLogs) print('Found ref.watch on: ${targetProvider.toString()} in $file');
 
       final type = switch (method) {
         'read' => RefAccessType.read,

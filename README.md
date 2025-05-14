@@ -32,7 +32,7 @@ dart pub global activate riverpod_graph
 Run the tool in your project directory:
 
 ```bash
-riverpod_graph .
+riverpod_graph
 ```
 
 This will:
@@ -40,8 +40,6 @@ This will:
 1. Analyze all Dart files under `lib/`
 2. Detect providers and their dependencies
 3. Output a `riverpod_graph.html` file in the current directory
-4. Include traceability info like file and line number
-
 ---
 
 ## 📂 Example Output (Mermaid syntax)

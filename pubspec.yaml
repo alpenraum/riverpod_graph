@@ -1,6 +1,6 @@
 name: riverpod_graph
 description: A CLI tool to generate provider dependency graphs for Riverpod apps.
-version: 1.0.0
+version: 1.0.1
 homepage: https://github.com/yourusername/riverpod_graph
 
 environment:
