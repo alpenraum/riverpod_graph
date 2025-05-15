@@ -19,5 +19,5 @@ void main(List<String> args) async {
   final html = analyzer.generateHtml(mermaid);
   analyzer.saveHtml(html, 'riverpod_graph.html');
 
-  print('\n✅ Graph saved to riverpod_graph.html');
+  print('\n✅ Graph saved to file://${Directory.current.path}/riverpod_graph.html');
 }

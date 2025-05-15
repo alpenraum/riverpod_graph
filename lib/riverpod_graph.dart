@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
@@ -8,10 +10,11 @@ import 'package:riverpod_graph/provider_edge.dart';
 import 'package:riverpod_graph/util/html_template.dart';
 
 class RiverpodGraphAnalyzer {
-  final bool  _printLogs;
-  
+  final bool _printLogs;
+
   RiverpodGraphAnalyzer(this._printLogs);
-  final _providers = <String, String>{}; // name -> file
+
+  final _actors = <String>{};
 
   final edges = <ProviderEdge>[];
 
@@ -22,44 +25,46 @@ class RiverpodGraphAnalyzer {
         .where((file) => file.path.endsWith('.dart'));
 
     for (final file in dartFiles) {
-      if(_printLogs) {
+      if (_printLogs) {
         print('Analyzing file: ${file.path}');
       }
       final content = await file.readAsString();
-      if(_printLogs) {
+      if (_printLogs) {
         print('Content of ${file.path}: \n$content'); // Log content for debug
       }
 
       final result = parseString(content: content, path: file.path);
       final unit = result.unit;
       final lineInfo = result.lineInfo;
-      final visitor = _Visitor(file.path, _providers, edges, lineInfo, _printLogs);
+      final visitor =
+        _Visitor(file.path, _actors, edges, lineInfo, _printLogs);
       unit.visitChildren(visitor);
 
-      if(_printLogs) {
+      if (_printLogs) {
         print('Finished analyzing file: ${file.path}');
       }
     }
   }
 
   String generateMermaid() {
-    final buffer = StringBuffer();
-    buffer.writeln('graph TD');
-    for (final edge in edges) {
-      final from = edge.from;
-      final to = edge.to;
-      final label = '${edge.file}:${edge.line}';
+    final nodes = _actors.map((name) => {
+      'data': {'id': name, 'label': name}
+    });
 
-      final arrow = switch (edge.type) {
-        RefAccessType.watch => '-->',
-        RefAccessType.read => '-.->',
-        RefAccessType.listen => '==>',
-      };
+    final edges = this.edges.map((edge) => {
+      'data': {
+        'source': edge.from,
+        'target': edge.to,
+        'label': edge.type.name, // e.g. "watch", "read"
+        'trace': "${edge.file}:${edge.line}"
+      },
+      'classes': edge.type.name.toLowerCase(),
+    });
 
-      buffer.writeln('  $from $arrow $to["$to\\n($label)"]:::${edge.type.name}');
-      buffer.writeln('  classDef ${edge.type.name} fill:#f9f,stroke:#333,stroke-width:1px;');
-    }
-    return buffer.toString();
+    final elements = [...nodes, ...edges];
+    final jsonGraph = jsonEncode(elements);
+
+    return jsonGraph;
   }
 
   String generateHtml(String mermaidGraph) {
@@ -70,18 +75,18 @@ class RiverpodGraphAnalyzer {
   void saveHtml(String content, String outputPath) {
     File(outputPath).writeAsStringSync(content);
   }
-
 }
 
 class _Visitor extends RecursiveAstVisitor<void> {
-  final String file;
-  final Map<String, String> providers;
-  final List<ProviderEdge> edges;
+  final String _file;
+  final Set<String> _actors;
+  final List<ProviderEdge> _edges;
   final bool _printLogs;
 
   final LineInfo _lineInfo;
 
-  _Visitor(this.file, this.providers, this.edges, this._lineInfo, this._printLogs);
+  _Visitor(
+      this._file, this._actors, this._edges, this._lineInfo, this._printLogs);
 
   @override
   void visitSimpleIdentifier(SimpleIdentifier node) {
@@ -89,23 +94,10 @@ class _Visitor extends RecursiveAstVisitor<void> {
 
     // Log when we encounter a potential provider or reference
     if (node.name.endsWith('Provider')) {
-      if(_printLogs) {
-        print('Found potential provider: ${node.name} in $file');
+      if (_printLogs) {
+        print('Found potential provider: ${node.name} in $_file');
       }
     }
-  }
-
-  @override
-  void visitVariableDeclaration(VariableDeclaration node) {
-    final name = node.name.toString();
-    final parent = node.parent;
-    if (parent is VariableDeclarationList) {
-      final type = parent.type?.toString() ?? '';
-      if (_isRiverpodProvider(type)) {
-        providers[name] = file;
-      }
-    }
-    super.visitVariableDeclaration(node);
   }
 
   @override
@@ -136,10 +128,9 @@ class _Visitor extends RecursiveAstVisitor<void> {
       }
 
       if (targetProvider != null) {
-        // Log to confirm we found the provider being watched
+        _actors.add(targetProvider);
         if (_printLogs) {
-          print(
-            'Found ref.watch on: ${targetProvider.toString()} in $file');
+          print('Found ref.watch on: ${targetProvider.toString()} in $_file');
         }
 
         final type = switch (method) {
@@ -150,52 +141,38 @@ class _Visitor extends RecursiveAstVisitor<void> {
 
         // Now we need to identify the provider that is invoking the 'ref.watch()'
         // This will be the provider in the scope of the node
-        final currentProvider = _findCurrentProvider(node);
+        final currentActor = _findCurrentActor(node);
 
-        if (currentProvider != null) {
+        if (currentActor != null) {
+            _actors.add(currentActor);
           // Add an edge from the current provider to the watched provider
-          edges.add(ProviderEdge(
-              currentProvider, // This is the provider that contains ref.watch()
+          _edges.add(ProviderEdge(
+              currentActor, // This is the provider that contains ref.watch()
               targetProvider, // The provider being watched
-              file,
-              _lineInfo
-                  .getLocation(node.offset)
-                  .lineNumber,
-              type
-          ));
+              _file,
+              _lineInfo.getLocation(node.offset).lineNumber,
+              type));
         }
       }
     }
   }
 
-  String? _findCurrentProvider(MethodInvocation node) {
-    var parent = node.parent;
+  String? _findCurrentActor(AstNode? node) {
+    if (node == null) return null;
 
-    // Traverse the parent chain to find the provider name (i.e., `fooProvider`)
-    while (parent != null) {
-      if (parent is VariableDeclaration) {
-        // Check if this variable is a provider (ends with 'Provider')
-        if (parent.name.lexeme.endsWith('Provider')) {
-          return parent.name
-              .lexeme; // This is the provider declaring the ref.watch() method
-        }
-      }
-      parent = parent.parent;
+    if (node is VariableDeclaration && node.name.lexeme.endsWith('Provider')) {
+      return node.name.lexeme;
     }
-    return null;
+
+    if (node is ClassDeclaration) {
+      return node.name.lexeme;
+    }
+
+    if (node is FunctionDeclaration) {
+      return node.name.lexeme;
+    }
+
+    return _findCurrentActor(node.parent);
   }
 
-  bool _isRiverpodProvider(String type) {
-    final base = type.replaceAll(RegExp(r'<.*>'), '');
-    return [
-      'Provider',
-      'StateProvider',
-      'FutureProvider',
-      'StreamProvider',
-      'StateNotifierProvider',
-      'NotifierProvider',
-      'ProviderFamily',
-      'AutoDisposeProvider',
-    ].any((prefix) => base.contains(prefix));
-  }
 }

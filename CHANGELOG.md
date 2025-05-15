@@ -1,3 +1,7 @@
+## 2.0.0
+
+- migrated from mermaid to cytoscape for interactivity of the graph
+
 ## 1.0.3
 
 - bugfixes for html rendering
