@@ -64,7 +64,7 @@ class RiverpodGraphAnalyzer {
 
   String generateHtml(String mermaidGraph) {
     final template = getHtmlTemplate();
-    return template.replaceAll('<!--MERMAID_GRAPH-->', mermaidGraph);
+    return template.replaceAll('{{graph}}', mermaidGraph);
   }
 
   void saveHtml(String content, String outputPath) {
